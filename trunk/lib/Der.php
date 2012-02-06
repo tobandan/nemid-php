@@ -103,9 +103,13 @@ class Der extends Oids {
     protected function peek($tag = null) {
         $t = null;
         if ($this->i < end($this->stack)) $t = ord($this->buffer[$this->i]) & 0x1f;
-        if ($tag !== null && $t === $tag) {
-            $this->next($tag);
-            return true;
+        if ($tag !== null) {
+            if ($t === $tag) {
+                $this->next($tag);
+                return true;
+            } else {
+                return false;
+            }
         } 
         return $t;
     }
