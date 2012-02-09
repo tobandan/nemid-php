@@ -109,7 +109,7 @@ class Trustedrootdigests {
 
 function nemid($nemidconfig, $trustedroots, $pidcprconfig = null)
 {
-	$p = isset($_POST['result']) and $_POST['result'];
+	$p = isset($_POST['result']) ? $_POST['result'] : false;
 	if (!$p) {
 		$nemidlogin = new WAYF\nemidlogin();
 		$params = $nemidlogin->prepareparamsfornemid($nemidconfig);
@@ -118,7 +118,9 @@ function nemid($nemidconfig, $trustedroots, $pidcprconfig = null)
 		exit;
 	} else {
 		$error = null;
-		if ($p == 'ok') {
+		if ($p === 'ok') {
+		    print_r(base64_decode($p));
+		    print_r($_POST);
 			$nemid = new WAYF\NemidCertificateCheck();
 			$certificate = $nemid->checkAndReturnCertificate($_POST['signature'], $_SESSION['nonce'], $trustedroots, DISABLE_OCSP_CHECK);
 			unset($_SESSION['nonce']);
@@ -129,10 +131,12 @@ function nemid($nemidconfig, $trustedroots, $pidcprconfig = null)
 			if ($pidcprconfig) {
 				$cpr = $nemid->pidCprRequest($pidcprconfig, $pid);
 			}
-		} elseif ($p == 'cancel') {
+		} elseif ($p === 'cancel') {
 			$error = 'User canceled login';
 		} else {
-			$error = 'Error from Nemid: ' . base64_decode($_POST['result']);
+		    include '../lib/nemid-error-codes.php';
+		    $errorcode = base64_decode($_POST['result']);
+			$error = $errorcodes[$errorcode];
 		}
 		return compact('pid', 'cn', 'cpr', 'error');
 	} 
