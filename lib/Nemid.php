@@ -324,7 +324,7 @@ class NemidCertificateCheck {
       $pid is the pid to lookup
     */
      
-    public function pidCprRequest($config, $pid)
+    public function pidCprRequest($config, $pid, $cpr = '')
     {
         /*
           A:
@@ -343,7 +343,7 @@ class NemidCertificateCheck {
           16384 = INTERNAL_ERROR ("Intern DanID fejl", "Internal DanID error")
          */
 
-        $pidCprRequest = '<?xml version="1.0" encoding="iso-8859-1"?><method name="pidCprRequest" version="1.0"><request><serviceId>x</serviceId><pid>x</pid></request></method>';
+        $pidCprRequest = '<?xml version="1.0" encoding="iso-8859-1"?><method name="pidCprRequest" version="1.0"><request><serviceId>x</serviceId><pid>x</pid><cpr>x</cpr></request></method>';
 
         $document = new \DOMDocument();
         $document->loadXML($pidCprRequest);
@@ -352,6 +352,7 @@ class NemidCertificateCheck {
         $pidCprRequestParams = array(
             'serviceId' => $config->serviceid,
             'pid' => $pid,
+            'cpr' => $cpr,
         );
         
         $element = $xp->query('/method/request')->item(0);
@@ -361,6 +362,11 @@ class NemidCertificateCheck {
             $element = $xp->query('/method/request/' . $p)->item(0);
             $newelement = $document->createTextNode($v);
             $element->replaceChild($newelement, $element->firstChild);
+        }
+        
+        if (!$cpr) {
+            $element = $xp->query('/method/request/cpr')->item(0);
+            $element->parentNode->removeChild($element);
         }
 
         $pidCprRequest = $document->saveXML();
