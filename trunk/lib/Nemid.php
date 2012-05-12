@@ -38,7 +38,7 @@ class NemidLogin {
             $normalized .= strtolower($name) . $value;
         }
         $normalized = utf8_encode($normalized);
-        $paramsdigest = openssl_digest($normalized, 'sha256', true);
+        $paramsdigest = hash('sha256', $normalized, true);
         $params['paramsdigest'] = base64_encode($paramsdigest);
 
         $privatekey = file_get_contents($config->privatekey);
@@ -183,7 +183,7 @@ class NemidCertificateCheck {
         $signatureValue = base64_decode($xp->query('ds:SignatureValue', $context)->item(0)->textContent);
         $publicKey = openssl_get_publickey($this->certificateAsPem($certificate));
 
-        if (!((openssl_digest($signedElement, 'sha256', true) == $digestValue)
+        if (!((hash('sha256', $signedElement, true) == $digestValue)
                 && openssl_verify($signedInfo, $signatureValue, $publicKey, 'sha256WithRSAEncryption') == 1)) {
             trigger_error('Error verifying incoming XMLsignature' . PHP_EOL
                     . openssl_error_string() . PHP_EOL . 'XMLsignature: ' . print_r(htmlspecialchars($message), 1), E_USER_ERROR);
