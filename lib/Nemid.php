@@ -43,7 +43,7 @@ class NemidLogin {
 
         $privatekey = file_get_contents($config->privatekey);
         $key = openssl_pkey_get_private($privatekey, $config->privatekeypass);
-        openssl_sign($normalized, $signeddigest, $key, 'sha256WithRSAEncryption');
+        Nemid52Compat::openssl_sign($normalized, $signeddigest, $key, 'sha256WithRSAEncryption');
         $params['signeddigest'] = base64_encode($signeddigest);
 
         $params['MAYSCRIPT'] = 'true';
@@ -116,7 +116,7 @@ class NemidCertificateCheck {
         if (!$publicKey) {
             trigger_error(openssl_error_string(), E_USER_ERROR);
         }
-        if (openssl_verify($data, $signature, $publicKey, $signatureAlgorithm) != 1) {
+        if (Nemid52Compat::openssl_verify($data, $signature, $publicKey, $signatureAlgorithm) != 1) {
             trigger_error(openssl_error_string(), E_USER_ERROR);
         }
     }
@@ -244,12 +244,12 @@ class NemidCertificateCheck {
 
         $resp = $ocspresponse['responseBytes']['BasicOCSPResponse']['tbsResponseData']['responses'][0];
 
-        $ocspresponse['responseStatus'] == 'successful' or trigger_error("OCSP Response Status not 'successful'", E_USER_ERROR);
-        $resp['certStatus'] == 'good' or trigger_error("OCSP Revocation status is not 'good'", E_USER_ERROR);
-        $resp['certID']['hashAlgorithm'] == 'sha-256'
-                && $resp['certID']['issuerNameHash'] == $certID['issuerNameHash']
-                && $resp['certID']['issuerKeyHash'] == $certID['issuerKeyHash']
-                && $resp['certID']['serialNumber'] == $certID['serialNumber']
+        $ocspresponse['responseStatus'] === 'successful' or trigger_error("OCSP Response Status not 'successful'", E_USER_ERROR);
+        $resp['certStatus'] === 'good' or trigger_error("OCSP Revocation status is not 'good'", E_USER_ERROR);
+        $resp['certID']['hashAlgorithm'] === 'sha-256'
+                && $resp['certID']['issuerNameHash'] === $certID['issuerNameHash']
+                && $resp['certID']['issuerKeyHash'] === $certID['issuerKeyHash']
+                && $resp['certID']['serialNumber'] === $certID['serialNumber']
                 or trigger_error("OCSP Revocation, mismatch between original and checked certificate", E_USER_ERROR);
         $now = gmdate(self::GENERALIZED_TIME_FORMAT);
         $resp['thisUpdate'] <= $now && $now <= $resp['nextupdate']
@@ -257,7 +257,7 @@ class NemidCertificateCheck {
 
         $ocspcertificateextns = $ocspcertificate['tbsCertificate']['extensions'];
         $ocspcertificateextns['extKeyUsage']['extnValue']['ocspSigning'] or trigger_error('ocspcertificate is not for ocspSigning', E_USER_ERROR);
-        $ocspcertificateextns['ocspNoCheck']['extnValue'] == null or trigger_error('ocspcertificate has not ocspNoCheck extension', E_USER_ERROR);
+        $ocspcertificateextns['ocspNoCheck']['extnValue'] === null or trigger_error('ocspcertificate has not ocspNoCheck extension', E_USER_ERROR);
     }
 
     /**
@@ -324,7 +324,7 @@ class NemidCertificateCheck {
       $pid is the pid to lookup
     */
      
-    public function pidCprRequest($config, $pid, $cpr = '')
+    public function pidCprRequest($config, $pid, $cpr = null)
     {
         /*
           A:
@@ -415,5 +415,87 @@ class NemidCertificateCheck {
 class NemidRoot {
     static public function fingerprint($url) {
         print hash('sha256', base64_decode(preg_replace('/(-----BEGIN CERTIFICATE-----|-----END CERTIFICATE-----|\s)/s', "", file_get_contents($url))));
+    }
+}
+
+class Nemid52Compat {
+
+    static function openssl_sign($data, &$signature, $priv_key_id, $signature_alg)
+    {
+        $eb = self::my_rsa_sha_encode($data, $priv_key_id, $signature_alg);
+        openssl_private_encrypt($eb, $signature, $priv_key_id, OPENSSL_NO_PADDING); 
+    }
+    
+    static function openssl_verify($data, $signature, $pub_key_id, $signature_alg)
+    {
+        openssl_public_decrypt($signature, $decrypted_signature, $pub_key_id, OPENSSL_NO_PADDING);
+        $eb = self::my_rsa_sha_encode($data, $pub_key_id, $signature_alg);
+        return $decrypted_signature === $eb ? 1 : 0;
+    }
+    
+    static function my_rsa_sha_encode($data, $key_id, $signagure_alg) {
+        $algos = array(
+            'sha1WithRSAEncryption'   => array('alg' => 'sha1',   'oid' => '1.3.14.3.2.26'),
+            'sha256WithRSAEncryption' => array('alg' => 'sha256', 'oid' => '2.16.840.1.101.3.4.2.1'),
+            'sha384WithRSAEncryption' => array('alg' => 'sha384', 'oid' => '2.16.840.1.101.3.4.2.2'),
+            'sha512WithRSAEncryption' => array('alg' => 'sha512', 'oid' => '2.16.840.1.101.3.4.2.3'),
+        );
+    
+        $pinfo = openssl_pkey_get_details($key_id);
+     
+        $digestalgorithm = $algos[$signagure_alg]['alg'];
+        $digestalgorithm or trigger_error('unknown or unsupported signaturealgorithm: ' . $signagure_alg);
+        $oid = $algos[$signagure_alg]['oid'];
+    
+        $digest = hash($digestalgorithm, $data, true);
+        
+        $t = self::sequence(self::sequence(self::s2oid($oid) . "\x05\x00") . self::octetstring($digest));
+        $pslen = $pinfo['bits']/8 - (strlen($t) + 3);
+    
+        $eb = "\x00\x01" . str_repeat("\xff", $pslen) . "\x00" . $t;
+        return $eb;
+    }
+    
+    static function sequence($pdu)
+    {
+        return "\x30" . self::len($pdu) . $pdu;
+    }
+    
+    static function s2oid($s)
+    {
+        $e = explode('.', $s);
+        $der = chr(40 * $e[0] + $e[1]);
+    
+        foreach (array_slice($e, 2) as $c) {
+            $mask = 0;
+            $derrev = '';
+            while ($c) {
+                $derrev .= chr(bcmod($c, 128) + $mask);
+                $c = bcdiv($c, 128, 0);
+                $mask = 128;
+            }
+            $der .= strrev($derrev);
+        }
+        return "\x06" . self::len($der) . $der;
+    }
+    
+    static function octetstring($s)
+    {
+        return "\x04" . self::len($s) . $s;
+    }
+    
+    
+    static function len($i)
+    {
+        $i = strlen($i);
+        if ($i <= 127)
+            $res = pack('C', $i);
+        elseif ($i <= 255)
+            $res = pack('CC', 0x81, $i);
+        elseif ($i <= 65535)
+            $res = pack('Cn', 0x82, $i);
+        else
+            $res = pack('CN', 0x84, $i);
+        return $res;
     }
 }
