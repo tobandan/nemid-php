@@ -6,7 +6,7 @@ include('Ocsp.php');
 
 class NemidLogin {
 
-    /**
+    /** 
       Prepares an array with the parameters for the nemid login form given a config object:
        class Nemidconfig {
            public $privatekey           = '../certs/testkey.pem';
