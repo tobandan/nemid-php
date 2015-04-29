@@ -1,0 +1,1 @@
+A php based library for using the Danish NemID for authenticating a user. Nemid.php supports preparing the parameters for the applet, checking the returned signature and the certificate chain within and optionally performing PID to CPR lookups.
